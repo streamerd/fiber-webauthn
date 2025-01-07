@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}}</title>
+    <script>
+        // Utility functions for base64URL encoding/decoding
+        function bufferToBase64URL(buffer) {
+            const bytes = new Uint8Array(buffer);
+            const str = String.fromCharCode.apply(null, bytes);
+            return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+
+        function base64URLToBuffer(base64URL) {
+            const base64 = base64URL.replace(/-/g, '+').replace(/_/g, '/');
+            const padLen = (4 - (base64.length % 4)) % 4;
+            const padded = base64 + '='.repeat(padLen);
+            const binary = atob(padded);
+            const buffer = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                buffer[i] = binary.charCodeAt(i);
+            }
+            return buffer.buffer;
+        }
+
+        // Registration
+        async function register() {
+            const userId = document.getElementById('userId').value;
+            const username = document.getElementById('username').value;
+            const displayName = document.getElementById('displayName').value;
+
+            try {
+                // Begin registration
+                const startResp = await fetch('/auth/passkey/register/begin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId, username, displayName })
+                });
+                const options = await startResp.json();
+
+                // Create credentials
+                const credential = await navigator.credentials.create({
+                    publicKey: {
+                        ...options.publicKey,
+                        challenge: base64URLToBuffer(options.publicKey.challenge),
+                        user: {
+                            ...options.publicKey.user,
+                            id: base64URLToBuffer(options.publicKey.user.id),
+                        }
+                    }
+                });
+
+                // Complete registration
+                const finishResp = await fetch('/auth/passkey/register/finish', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: credential.id,
+                        rawId: bufferToBase64URL(credential.rawId),
+                        type: credential.type,
+                        response: {
+                            attestationObject: bufferToBase64URL(credential.response.attestationObject),
+                            clientDataJSON: bufferToBase64URL(credential.response.clientDataJSON)
+                        }
+                    })
+                });
+                const result = await finishResp.json();
+                alert('Registration successful!');
+            } catch (error) {
+                console.error('Registration failed:', error);
+                alert('Registration failed: ' + error.message);
+            }
+        }
+
+        // Authentication
+        async function login() {
+            const userId = document.getElementById('loginUserId').value;
+
+            try {
+                // Begin authentication
+                const startResp = await fetch('/auth/passkey/login/begin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId })
+                });
+                const options = await startResp.json();
+
+                // Get assertion
+                const assertion = await navigator.credentials.get({
+                    publicKey: {
+                        ...options.publicKey,
+                        challenge: base64URLToBuffer(options.publicKey.challenge),
+                        allowCredentials: options.publicKey.allowCredentials.map(cred => ({
+                            ...cred,
+                            id: base64URLToBuffer(cred.id)
+                        }))
+                    }
+                });
+
+                // Complete authentication
+                const finishResp = await fetch('/auth/passkey/login/finish', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: assertion.id,
+                        rawId: bufferToBase64URL(assertion.rawId),
+                        type: assertion.type,
+                        response: {
+                            authenticatorData: bufferToBase64URL(assertion.response.authenticatorData),
+                            clientDataJSON: bufferToBase64URL(assertion.response.clientDataJSON),
+                            signature: bufferToBase64URL(assertion.response.signature),
+                            userHandle: bufferToBase64URL(assertion.response.userHandle)
+                        }
+                    })
+                });
+                const result = await finishResp.json();
+                alert('Authentication successful!');
+            } catch (error) {
+                console.error('Authentication failed:', error);
+                alert('Authentication failed: ' + error.message);
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            gap: 40px;
+        }
+        .section {
+            flex: 1;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>{{.Title}}</h1>
+    <div class="container">
+        <div class="section">
+            <h2>Register</h2>
+            <div class="form-group">
+                <label for="userId">User ID:</label>
+                <input type="text" id="userId" required>
+            </div>
+            <div class="form-group">
+                <label for="username">Username:</label>
+                <input type="text" id="username" required>
+            </div>
+            <div class="form-group">
+                <label for="displayName">Display Name:</label>
+                <input type="text" id="displayName" required>
+            </div>
+            <button onclick="register()">Register Passkey</button>
+        </div>
+
+        <div class="section">
+            <h2>Login</h2>
+            <div class="form-group">
+                <label for="loginUserId">User ID:</label>
+                <input type="text" id="loginUserId" required>
+            </div>
+            <button onclick="login()">Login with Passkey</button>
+        </div>
+    </div>
+</body>
+</html> 
