@@ -12,6 +12,12 @@ import (
 )
 
 func main() {
+	// Get port from environment or use default
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3000"
+	}
+
 	// Initialize SQLite store
 	store, err := store.NewSQLiteStore("webauthn.db")
 	if err != nil {
@@ -23,11 +29,31 @@ func main() {
 
 	// Initialize Fiber
 	app := fiber.New(fiber.Config{
-		Views: engine,
+		Views:                 engine,
+		DisableStartupMessage: true,
+	})
+
+	// Add proxy configuration
+	app.Use(func(c *fiber.Ctx) error {
+		c.Set("X-Forwarded-Proto", "http")
+		c.Set("X-Forwarded-Host", "localhost:3000")
+		return c.Next()
 	})
 
 	// Serve static files
 	app.Static("/", "./views")
+
+	// Add redirect middleware FIRST
+	app.Use(func(c *fiber.Ctx) error {
+		if c.Hostname() == "127.0.0.1" {
+			originalURL := c.OriginalURL()
+			if originalURL == "" {
+				originalURL = "/"
+			}
+			return c.Redirect("http://localhost:3000" + originalURL)
+		}
+		return c.Next()
+	})
 
 	// Initialize WebAuthn middleware
 	webAuthnMiddleware := webauthn.New(webauthn.Config{
@@ -40,8 +66,8 @@ func main() {
 	// Routes
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.Render("index", fiber.Map{
-			"Title": "WebAuthn Example",
-		})
+			"Title": "WebAuthn Demo",
+		}, "")
 	})
 
 	// WebAuthn endpoints
@@ -51,10 +77,6 @@ func main() {
 	auth.Post("/login/begin", webAuthnMiddleware.BeginAuthentication())
 	auth.Post("/login/finish", webAuthnMiddleware.FinishAuthentication())
 
-	// Start server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "3000"
-	}
-	log.Fatal(app.Listen(":" + port))
+	log.Printf("Server started at http://localhost:%s\n", port)
+	log.Fatal(app.Listen("localhost:" + port))
 }

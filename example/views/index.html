@@ -3,8 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.Title}}</title>
+    <title>WebAuthn Demo</title>
     <script>
+        console.log('Current origin:', window.location.origin);
+        console.log('Current hostname:', window.location.hostname);
+
         // Utility functions for base64URL encoding/decoding
         function bufferToBase64URL(buffer) {
             const bytes = new Uint8Array(buffer);
@@ -24,6 +27,11 @@
             return buffer.buffer;
         }
 
+        // Redirect if accessed via IP
+        if (window.location.hostname === "127.0.0.1") {
+            window.location.replace(window.location.href.replace("127.0.0.1", "localhost"));
+        }
+
         // Registration
         async function register() {
             const userId = document.getElementById('userId').value;
@@ -34,10 +42,27 @@
                 // Begin registration
                 const startResp = await fetch('/auth/passkey/register/begin', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    credentials: 'include',
                     body: JSON.stringify({ userId, username, displayName })
                 });
+                
+                if (!startResp.ok) {
+                    const error = await startResp.json();
+                    throw new Error(`Registration start failed: ${error.error || startResp.statusText}`);
+                }
+                
                 const options = await startResp.json();
+                console.log('Registration options:', options);  // Debug log
+
+                console.log('WebAuthn options:', {
+                    ...options.publicKey,
+                    rpId: options.publicKey.rp.id,
+                    origin: window.location.origin
+                });
 
                 // Create credentials
                 const credential = await navigator.credentials.create({
@@ -47,14 +72,36 @@
                         user: {
                             ...options.publicKey.user,
                             id: base64URLToBuffer(options.publicKey.user.id),
+                        },
+                        attestation: 'direct',
+                        authenticatorSelection: {
+                            ...options.publicKey.authenticatorSelection,
+                            requireResidentKey: false,
+                            userVerification: "preferred"
                         }
+                    }
+                }).catch(err => {
+                    console.error('Credential creation error:', err);
+                    throw err;
+                });
+
+                console.log('Creating credential with options:', {
+                    ...options.publicKey,
+                    challenge: base64URLToBuffer(options.publicKey.challenge),
+                    user: {
+                        ...options.publicKey.user,
+                        id: base64URLToBuffer(options.publicKey.user.id)
                     }
                 });
 
                 // Complete registration
                 const finishResp = await fetch('/auth/passkey/register/finish', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    credentials: 'include',
                     body: JSON.stringify({
                         id: credential.id,
                         rawId: bufferToBase64URL(credential.rawId),
@@ -67,9 +114,16 @@
                 });
                 const result = await finishResp.json();
                 alert('Registration successful!');
+
+                console.log('Credential created:', credential);
+                console.log('Sending to server:', {
+                    id: credential.id,
+                    rawId: bufferToBase64URL(credential.rawId),
+                    type: credential.type
+                });
             } catch (error) {
                 console.error('Registration failed:', error);
-                alert('Registration failed: ' + error.message);
+                alert(`Registration failed: ${error.message}\nCheck console for details`);
             }
         }
 
@@ -81,7 +135,11 @@
                 // Begin authentication
                 const startResp = await fetch('/auth/passkey/login/begin', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    credentials: 'same-origin',
                     body: JSON.stringify({ userId })
                 });
                 const options = await startResp.json();
@@ -101,7 +159,11 @@
                 // Complete authentication
                 const finishResp = await fetch('/auth/passkey/login/finish', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    credentials: 'same-origin',
                     body: JSON.stringify({
                         id: assertion.id,
                         rawId: bufferToBase64URL(assertion.rawId),
@@ -165,7 +227,7 @@
     </style>
 </head>
 <body>
-    <h1>{{.Title}}</h1>
+    <h1>WebAuthn Demo</h1>
     <div class="container">
         <div class="section">
             <h2>Register</h2>
