@@ -2,7 +2,7 @@
 
 # Fiber WebAuthn Middleware
 
-[![Release](https://img.shields.io/github/release/gofiber/webauthn.svg)](https://github.com/streamerd/fiber-webauthn/releases)
+[![Release](https://img.shields.io/github/release/streamerd/fiber-webauthn.svg)](https://github.com/streamerd/fiber-webauthn/releases)
 [![Discord](https://img.shields.io/discord/704680098577514527?style=flat&label=%F0%9F%92%AC%20discord&color=00ACD7)](https://gofiber.io/discord)
 [![Go Reference](https://pkg.go.dev/badge/github.com/streamerd/fiber-webauthn.svg)](https://pkg.go.dev/github.com/streamerd/fiber-webauthn)
 [![FIDO2 Certified](https://img.shields.io/badge/FIDO2-Certified-yellow)](https://fidoalliance.org/fido2/)
