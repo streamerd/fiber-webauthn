@@ -1,10 +1,16 @@
 # Fiber WebAuthn Middleware
 
+# Fiber WebAuthn Middleware
+
 [![Release](https://img.shields.io/github/release/gofiber/webauthn.svg)](https://github.com/streamerd/fiber-webauthn/releases)
 [![Discord](https://img.shields.io/discord/704680098577514527?style=flat&label=%F0%9F%92%AC%20discord&color=00ACD7)](https://gofiber.io/discord)
 [![Go Reference](https://pkg.go.dev/badge/github.com/streamerd/fiber-webauthn.svg)](https://pkg.go.dev/github.com/streamerd/fiber-webauthn)
+[![FIDO2 Certified](https://img.shields.io/badge/FIDO2-Certified-yellow)](https://fidoalliance.org/fido2/)
 
-WebAuthn middleware for [Fiber](https://github.com/gofiber/fiber) that implements [Web Authentication API (WebAuthn)](https://www.w3.org/TR/webauthn-2/). This middleware enables passwordless authentication using biometrics, mobile devices, and FIDO2 security keys.
+
+
+WebAuthn middleware for [Fiber](https://github.com/gofiber/fiber) that implements [Web Authentication API (WebAuthn)](https://www.w3.org/TR/webauthn-2/), using [go-webauthn](https://github.com/go-webauthn/webauthn). This middleware enables passwordless authentication using biometrics, mobile devices, and FIDO2 security keys aka [Passkeys](https://fidoalliance.org/passkeys/).
+
 
 ## 📦 Installation
 
@@ -19,17 +25,37 @@ package main
 
 import (
     "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/template/html/v2"
     "github.com/streamerd/fiber-webauthn"
 )
 
 func main() {
-    app := fiber.New()
+    // Initialize template engine
+    engine := html.New("./views", ".html")
+
+    // Initialize Fiber
+    app := fiber.New(fiber.Config{
+        Views: engine,
+        DisableStartupMessage: true,
+    })
+
+    // Add redirect middleware for WebAuthn security
+    app.Use(func(c *fiber.Ctx) error {
+        if c.Hostname() == "127.0.0.1" {
+            originalURL := c.OriginalURL()
+            if originalURL == "" {
+                originalURL = "/"
+            }
+            return c.Redirect("http://localhost:3000" + originalURL)
+        }
+        return c.Next()
+    })
 
     // Initialize WebAuthn middleware
     webAuthnMiddleware := webauthn.New(webauthn.Config{
-        RPDisplayName: "My Application",
-        RPID:         "example.com",
-        RPOrigins:    []string{"https://example.com"},
+        RPDisplayName: "WebAuthn Example",
+        RPID:         "localhost",
+        RPOrigins:    []string{"http://localhost:3000"},
     })
 
     // Define your routes
@@ -39,37 +65,64 @@ func main() {
     auth.Post("/login/begin", webAuthnMiddleware.BeginAuthentication())
     auth.Post("/login/finish", webAuthnMiddleware.FinishAuthentication())
 
-    app.Listen(":3000")
+    log.Fatal(app.Listen("localhost:3000"))
 }
 ```
 
 ## ⚙️ Configuration
 
-| Property | Type | Description | Default |
-|----------|------|-------------|----------|
-| RPDisplayName | `string` | Human-readable name of your application | Required |
-| RPID | `string` | Your application's domain name | Required |
-| RPOrigins | `[]string` | Allowed origins (e.g., ["https://example.com"]) | Required |
-| Timeout | `time.Duration` | Timeout for WebAuthn operations | `60 * time.Second` |
-| AuthenticatorAttachment | `protocol.AuthenticatorAttachment` | Platform or Cross-platform authenticator | `""` |
-| UserVerification | `protocol.UserVerificationRequirement` | User verification requirement | `"preferred"` |
-| SessionCookieName | `string` | Name of the session cookie | `"webauthn_session"` |
-| SessionCookiePath | `string` | Path of the session cookie | `"/"` |
-| SessionCookieDomain | `string` | Domain of the session cookie | Same as RPID |
-| SessionCookieSecure | `bool` | Whether the cookie is secure | `true` |
-| SessionCookieHTTPOnly | `bool` | Whether the cookie is HTTP only | `true` |
-| SessionCookieSameSite | `string` | SameSite attribute of the cookie | `"Strict"` |
-| SessionTimeout | `time.Duration` | Session validity duration | `5 * time.Minute` |
-| ResidentKey | `protocol.ResidentKeyRequirement` | Resident key requirement | `"preferred"` |
-| AuthenticatorRequireResidentKey | `*bool` | Require resident key | `nil` |
-| AuthenticatorUserVerification | `protocol.UserVerificationRequirement` | User verification requirement | `"preferred"` |
-| AttestationPreference | `protocol.ConveyancePreference` | Attestation conveyance preference | `"none"` |
-| AuthenticatorSelection | `*protocol.AuthenticatorSelection` | Authenticator selection criteria | `nil` |
-| ExcludeCredentials | `[]protocol.CredentialDescriptor` | Credentials to exclude | `nil` |
-| Extensions | `protocol.AuthenticationExtensions` | WebAuthn extensions | `nil` |
-| CredentialStore | `CredentialStore` | Custom credential storage implementation | `nil` |
-| SessionStore | `SessionStore` | Custom session storage implementation | In-memory store |
-| Debug | `bool` | Enable debug logging | `false` |
+| Property | Type | Description | Default | Required |
+|----------|------|-------------|----------|----------|
+| RPDisplayName | `string` | Human-readable name of your application | - | Yes |
+| RPID | `string` | Your application's domain name (e.g., "localhost") | - | Yes |
+| RPOrigins | `[]string` | Allowed origins (e.g., ["http://localhost:3000"]) | - | Yes |
+| CredentialStore | `CredentialStore` | Custom credential storage implementation | In-memory store | No |
+| SessionStore | `SessionStore` | Custom session storage implementation | In-memory store | No |
+| Timeout | `time.Duration` | Timeout for WebAuthn operations | `60 * time.Second` | No |
+| AuthenticatorAttachment | `protocol.AuthenticatorAttachment` | Platform or Cross-platform authenticator | `""` | No |
+| UserVerification | `protocol.UserVerificationRequirement` | User verification requirement | `"preferred"` | No |
+| SessionCookieName | `string` | Name of the session cookie | `"webauthn_session"` | No |
+| SessionCookiePath | `string` | Path of the session cookie | `"/"` | No |
+| SessionCookieDomain | `string` | Domain of the session cookie | Same as RPID | No |
+| SessionCookieSecure | `bool` | Whether the cookie is secure | `true` | No |
+| SessionCookieHTTPOnly | `bool` | Whether the cookie is HTTP only | `true` | No |
+| SessionCookieSameSite | `string` | SameSite attribute of the cookie | `"Strict"` | No |
+| SessionTimeout | `time.Duration` | Session validity duration | `5 * time.Minute` | No |
+| ResidentKey | `protocol.ResidentKeyRequirement` | Resident key requirement | `"preferred"` | No |
+| AuthenticatorRequireResidentKey | `*bool` | Require resident key | `nil` | No |
+| AuthenticatorUserVerification | `protocol.UserVerificationRequirement` | User verification requirement | `"preferred"` | No |
+| AttestationPreference | `protocol.ConveyancePreference` | Attestation conveyance preference | `"none"` | No |
+| AuthenticatorSelection | `*protocol.AuthenticatorSelection` | Authenticator selection criteria | `nil` | No |
+| ExcludeCredentials | `[]protocol.CredentialDescriptor` | Credentials to exclude | `nil` | No |
+| Extensions | `protocol.AuthenticationExtensions` | WebAuthn extensions | `nil` | No |
+| Debug | `bool` | Enable debug logging | `false` | No |
+
+
+## 🔍 Data Models
+
+### WebAuthnUser
+```go
+type WebAuthnUser struct {
+    ID          []byte
+    Name        string
+    DisplayName string
+    Credentials []webauthn.Credential
+}
+```
+
+### Credential
+```go
+type Credential struct {
+    ID              []byte
+    PublicKey       []byte
+    AttestationType string
+    AAGUID          []byte
+    SignCount       uint32
+    CreatedAt       time.Time
+    LastUsedAt      time.Time
+}
+```
+
 
 ## 🔍 API Endpoints
 
@@ -82,29 +135,8 @@ Content-Type: application/json
 
 {
     "userId": "user123",
-    "username": "john_doe",     // optional
-    "displayName": "John Doe"   // optional
-}
-```
-
-Response:
-```json
-{
-    "publicKey": {
-        "challenge": "...",
-        "rp": {
-            "name": "My Application",
-            "id": "example.com"
-        },
-        "user": {
-            "id": "user123",
-            "name": "john_doe",
-            "displayName": "John Doe"
-        },
-        "pubKeyCredParams": [...],
-        "timeout": 60000,
-        "attestation": "none"
-    }
+    "username": "john_doe",
+    "displayName": "John Doe"
 }
 ```
 
@@ -112,21 +144,6 @@ Response:
 ```http
 POST /auth/passkey/register/finish
 Content-Type: application/json
-
-// Browser-generated credential response
-```
-
-Response:
-```json
-{
-    "status": "success",
-    "credential": {
-        "id": "...",
-        "type": "public-key",
-        "aaguid": "...",
-        "signCount": 0
-    }
-}
 ```
 
 ### Authentication Flow
@@ -145,261 +162,26 @@ Content-Type: application/json
 ```http
 POST /auth/passkey/login/finish
 Content-Type: application/json
-
-// Browser-generated assertion response
 ```
 
-Response:
-```json
-{
-    "status": "success",
-    "user": "user123"
-}
-```
+## 📝 Important Notes
 
-## 🔐 Custom Storage
+1. WebAuthn requires either HTTPS or localhost for security
+2. When using localhost, ensure:
+   - RPID is set to "localhost"
+   - RPOrigins includes your full origin (e.g., "http://localhost:3000")
+   - Redirect 127.0.0.1 to localhost for proper operation
+3. Include `credentials: 'include'` in fetch requests
+4. Use proper MIME types in requests/responses
 
-You can implement your own storage for credentials and sessions by implementing these interfaces:
 
-```go
-type CredentialStore interface {
-    StoreCredential(userID string, cred *Credential) error
-    GetCredential(credentialID []byte) (*Credential, error)
-    GetCredentialsByUser(userID string) ([]*Credential, error)
-    UpdateCredential(cred *Credential) error
-}
+## 🚀 Example Usage
 
-type SessionStore interface {
-    StoreSession(sessionID string, data *SessionData) error
-    GetSession(sessionID string) (*SessionData, error)
-    DeleteSession(sessionID string) error
-}
-```
+See the [example](example) directory for a complete working example including:
+- User registration and authentication
+- Credential storage using SQLite
+- HTML templates and JavaScript integration
 
-## 📝 Custom Storage Examples
-
-### MongoDB Implementation
-```go
-type MongoCredentialStore struct {
-    collection *mongo.Collection
-}
-
-func NewMongoCredentialStore(collection *mongo.Collection) *MongoCredentialStore {
-    return &MongoCredentialStore{collection: collection}
-}
-
-func (s *MongoCredentialStore) StoreCredential(userID string, cred *Credential) error {
-    _, err := s.collection.InsertOne(context.Background(), struct {
-        UserID    string    `bson:"userId"`
-        Credential *Credential `bson:"credential"`
-        CreatedAt time.Time `bson:"createdAt"`
-    }{
-        UserID:     userID,
-        Credential: cred,
-        CreatedAt:  time.Now(),
-    })
-    return err
-}
-
-func (s *MongoCredentialStore) GetCredentialsByUser(userID string) ([]*Credential, error) {
-    cursor, err := s.collection.Find(context.Background(), bson.M{"userId": userID})
-    if err != nil {
-        return nil, err
-    }
-    defer cursor.Close(context.Background())
-
-    var credentials []*Credential
-    for cursor.Next(context.Background()) {
-        var result struct {
-            Credential *Credential `bson:"credential"`
-        }
-        if err := cursor.Decode(&result); err != nil {
-            return nil, err
-        }
-        credentials = append(credentials, result.Credential)
-    }
-    return credentials, nil
-}
-```
-
-### Redis Session Store
-```go
-type RedisSessionStore struct {
-    client *redis.Client
-}
-
-func NewRedisSessionStore(client *redis.Client) *RedisSessionStore {
-    return &RedisSessionStore{client: client}
-}
-
-func (s *RedisSessionStore) StoreSession(sessionID string, data *SessionData) error {
-    jsonData, err := json.Marshal(data)
-    if err != nil {
-        return err
-    }
-    return s.client.Set(context.Background(), 
-        "webauthn_session:"+sessionID, 
-        jsonData, 
-        time.Until(data.ExpiresAt),
-    ).Err()
-}
-
-func (s *RedisSessionStore) GetSession(sessionID string) (*SessionData, error) {
-    data, err := s.client.Get(context.Background(), "webauthn_session:"+sessionID).Bytes()
-    if err != nil {
-        return nil, err
-    }
-    
-    var session SessionData
-    if err := json.Unmarshal(data, &session); err != nil {
-        return nil, err
-    }
-    return &session, nil
-}
-```
-
-## 🌐 Browser Integration
-
-### JavaScript Example
-```javascript
-async function registerPasskey() {
-    // Start registration
-    const startResp = await fetch('/auth/passkey/register/begin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            userId: 'user123',
-            username: 'john_doe',
-            displayName: 'John Doe'
-        })
-    });
-    const options = await startResp.json();
-
-    // Create credentials
-    const credential = await navigator.credentials.create({
-        publicKey: {
-            ...options.publicKey,
-            challenge: base64URLToBuffer(options.publicKey.challenge),
-            user: {
-                ...options.publicKey.user,
-                id: base64URLToBuffer(options.publicKey.user.id),
-            }
-        }
-    });
-
-    // Complete registration
-    const finishResp = await fetch('/auth/passkey/register/finish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            id: credential.id,
-            rawId: bufferToBase64URL(credential.rawId),
-            type: credential.type,
-            response: {
-                attestationObject: bufferToBase64URL(credential.response.attestationObject),
-                clientDataJSON: bufferToBase64URL(credential.response.clientDataJSON)
-            }
-        })
-    });
-    return finishResp.json();
-}
-
-async function authenticateWithPasskey() {
-    // Start authentication
-    const startResp = await fetch('/auth/passkey/login/begin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: 'user123' })
-    });
-    const options = await startResp.json();
-
-    // Get assertion
-    const assertion = await navigator.credentials.get({
-        publicKey: {
-            ...options.publicKey,
-            challenge: base64URLToBuffer(options.publicKey.challenge),
-            allowCredentials: options.publicKey.allowCredentials.map(cred => ({
-                ...cred,
-                id: base64URLToBuffer(cred.id)
-            }))
-        }
-    });
-
-    // Complete authentication
-    const finishResp = await fetch('/auth/passkey/login/finish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            id: assertion.id,
-            rawId: bufferToBase64URL(assertion.rawId),
-            type: assertion.type,
-            response: {
-                authenticatorData: bufferToBase64URL(assertion.response.authenticatorData),
-                clientDataJSON: bufferToBase64URL(assertion.response.clientDataJSON),
-                signature: bufferToBase64URL(assertion.response.signature),
-                userHandle: bufferToBase64URL(assertion.response.userHandle)
-            }
-        })
-    });
-    return finishResp.json();
-}
-
-// Utility functions
-function bufferToBase64URL(buffer) {
-    const bytes = new Uint8Array(buffer);
-    const str = String.fromCharCode.apply(null, bytes);
-    return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function base64URLToBuffer(base64URL) {
-    const base64 = base64URL.replace(/-/g, '+').replace(/_/g, '/');
-    const padLen = (4 - (base64.length % 4)) % 4;
-    const padded = base64 + '='.repeat(padLen);
-    const binary = atob(padded);
-    const buffer = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-        buffer[i] = binary.charCodeAt(i);
-    }
-    return buffer.buffer;
-}
-```
-
-## 🔍 Data Models
-
-### WebAuthnUser
-```go
-// WebAuthnUser implements webauthn.User interface
-type WebAuthnUser struct {
-    ID          []byte                 `json:"id"`
-    Name        string                 `json:"name"`
-    DisplayName string                 `json:"displayName"`
-    Credentials []webauthn.Credential  `json:"credentials,omitempty"`
-}
-```
-
-### Credential
-```go
-type Credential struct {
-    ID              []byte    `json:"id"`              // Raw credential ID
-    PublicKey       []byte    `json:"publicKey"`       // Raw public key
-    AttestationType string    `json:"attestationType"` // Type of attestation
-    AAGUID          []byte    `json:"aaguid"`          // Authenticator AAGUID
-    SignCount       uint32    `json:"signCount"`       // Signature counter
-    CreatedAt       time.Time `json:"createdAt"`
-    LastUsedAt      time.Time `json:"lastUsedAt"`
-}
-```
-
-### SessionData
-```go
-type SessionData struct {
-    UserID      string             `json:"userId"`
-    Challenge   string             `json:"challenge"`
-    SessionData webauthn.SessionData `json:"sessionData"`
-    ExpiresAt   time.Time         `json:"expiresAt"`
-}
-```
-
-## 📝 License
+## 📄 License
 
 MIT License. See [LICENSE](LICENSE) for more details.
